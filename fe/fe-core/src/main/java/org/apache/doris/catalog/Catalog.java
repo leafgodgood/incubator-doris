@@ -1475,7 +1475,7 @@ public class Catalog {
         File curFile = storage.getCurrentImageFile();
         if (!curFile.exists()) {
             // image.0 may not exist
-            LOG.info("image does not exist: {}", curFile.getAbsolutePath());
+            LOG.info("image leafgod does not exist: {}", curFile.getAbsolutePath());
             return;
         }
         replayedJournalId.set(storage.getImageSeq());

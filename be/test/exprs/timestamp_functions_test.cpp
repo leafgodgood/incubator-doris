@@ -19,8 +19,6 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/scoped_ptr.hpp>
-
 #include "runtime/exec_env.h"
 #include "runtime/runtime_state.h"
 #include "runtime/test_env.h"
@@ -388,7 +386,7 @@ TEST_F(TimestampFunctionsTest, timestampdiff_test) {
     ASSERT_DIFF(month, 0, tv2, tv1);
     ASSERT_DIFF(month, 0, tv2, tv1);
     ASSERT_DIFF(month, 0, 20120924000000, tv1);
-    ASSERT_DIFF(month, 1, tv1, 20120631000000);
+    ASSERT_DIFF(month, 1, tv1, 20120630000000);
     //WEEK
     ASSERT_DIFF(week, 0, tv2, tv1);
     //DAY

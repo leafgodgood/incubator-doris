@@ -1,9 +1,11 @@
-#!/usr/bin/env bash
-# Copyright (c) 2017, Baidu.com, Inc. All Rights Reserved
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+#/bin/bash
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
 #   http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -30,6 +32,8 @@ DATAX_GITHUB=https://github.com/alibaba/DataX.git
 DORISWRITER_DIR=$DATAX_EXTENSION_HOME/doriswriter
 DATAX_GIT_DIR=$DATAX_EXTENSION_HOME/DataX/
 DATAX_POM=$DATAX_EXTENSION_HOME/DataX/pom.xml
+DATAX_PACKAGE=$DATAX_EXTENSION_HOME/DataX/package.xml
+DATAX_CORE_POM=$DATAX_EXTENSION_HOME/DataX/core/pom.xml
 
 if [ ! -d $DATAX_GIT_DIR ]; then
     echo "Clone DataX from $DATAX_GITHUB"
@@ -50,6 +54,22 @@ if [ `grep -c "doriswriter" $DATAX_POM` -eq 0 ]; then
     sed -i "s/<\/modules>/    <module>doriswriter<\/module>\n    <\/modules>/g"  $DATAX_POM 
 else
     echo "doriswriter module exists in $DATAX_POM"  
+fi
+
+if [ `grep -c "doriswriter" $DATAX_PACKAGE` -eq 0 ]; then
+    echo "No doriswriter module in $DATAX_PACKAGE, add it"
+    cp $DATAX_PACKAGE ${DATAX_PACKAGE}.orig
+    sed -i "s/<\/fileSets>/    <fileSet>\n            <directory>doriswriter\/target\/datax\/<\/directory>\n            <includes>\n                <include>**\/*.*<\/include>\n            <\/includes>\n            <outputDirectory>datax<\/outputDirectory>\n        <\/fileSet>\n    <\/fileSets>/g"  $DATAX_PACKAGE
+else
+    echo "doriswriter module exists in $DATAX_PACKAGE"  
+fi
+
+if [ `grep -c "4.5.13" $DATAX_CORE_POM` -eq 0 ]; then
+    echo "No httpclient 4.5.13 in $DATAX_CORE_POM, add it"
+    cp $DATAX_CORE_POM ${DATAX_CORE_POM}.orig
+    sed -i ":a;N;s/<artifactId>httpclient<\/artifactId>\n            <version>4.5<\/version>/<artifactId>httpclient<\/artifactId>\n            <version>4.5.13<\/version>/g" $DATAX_CORE_POM
+else
+    echo "httpclient 4.5.13 exists in $DATAX_CORE_POM"  
 fi
 
 echo "Finish DataX environment initialization"

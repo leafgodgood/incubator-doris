@@ -28,6 +28,8 @@ endif()
 
 project(doris CXX C)
 
+# Write compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # set platforms
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|x86_64")
@@ -133,9 +135,9 @@ set(BOOST_ROOT ${THIRDPARTY_DIR})
 set(Boost_NO_BOOST_CMAKE OFF)
 
 if (NOT APPLE)
-    find_package(Boost 1.73.0 REQUIRED COMPONENTS regex system filesystem thread date_time program_options)
+    find_package(Boost 1.73.0 REQUIRED COMPONENTS system date_time)
 else()
-    find_package(Boost 1.73.0 COMPONENTS thread regex system filesystem date_time program_options)
+    find_package(Boost 1.73.0 COMPONENTS system date_time)
 endif()
 
 set(GPERFTOOLS_HOME "${THIRDPARTY_DIR}/gperftools")
@@ -169,6 +171,9 @@ set_target_properties(protoc PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib/
 
 add_library(gtest STATIC IMPORTED)
 set_target_properties(gtest PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib/libgtest.a)
+
+add_library(benchmark STATIC IMPORTED)
+set_target_properties(benchmark PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib/libbenchmark.a)
 
 add_library(gmock STATIC IMPORTED)
 set_target_properties(gmock PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib/libgmock.a)
@@ -231,9 +236,6 @@ set_target_properties(zstd PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/
 add_library(arrow STATIC IMPORTED)
 set_target_properties(arrow PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libarrow.a)
 
-add_library(double-conversion STATIC IMPORTED)
-set_target_properties(double-conversion PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libdouble-conversion.a)
-
 add_library(parquet STATIC IMPORTED)
 set_target_properties(parquet PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libparquet.a)
 
@@ -291,16 +293,19 @@ set_target_properties(aws-checksums PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DI
 add_library(aws-s2n STATIC IMPORTED)
 set_target_properties(aws-s2n PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libs2n.a)
 
-add_library(minzip STATIC IMPORTED)
-set_target_properties(minzip PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libminizip.a)
+add_library(minizip STATIC IMPORTED)
+set_target_properties(minizip PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libminizip.a)
+
+add_library(gsasl STATIC IMPORTED)
+set_target_properties(gsasl PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libgsasl.a)
+
+add_library(breakpad STATIC IMPORTED)
+set_target_properties(breakpad PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libbreakpad_client.a)
 
 if (ARCH_AMD64)
     # libhdfs3 only support x86 or amd64
     add_library(hdfs3 STATIC IMPORTED)
     set_target_properties(hdfs3 PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libhdfs3.a)
-
-    add_library(gsasl STATIC IMPORTED)
-    set_target_properties(gsasl PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libgsasl.a)
 
     add_library(xml2 STATIC IMPORTED)
     set_target_properties(xml2 PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib64/libxml2.a)
@@ -329,7 +334,7 @@ check_function_exists(sched_getcpu HAVE_SCHED_GETCPU)
 #  -DBOOST_DATE_TIME_POSIX_TIME_STD_CONFIG: enable nanosecond precision for boost
 #  -fno-omit-frame-pointers: Keep frame pointer for functions in register
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -Wall -Wno-sign-compare -Wno-unknown-pragmas -pthread -Werror=strict-aliasing")
-set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -fno-omit-frame-pointer")
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -fstrict-aliasing -fno-omit-frame-pointer -Werror=return-type")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -std=gnu++17 -D__STDC_FORMAT_MACROS")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -Wno-deprecated -Wno-vla")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DBOOST_DATE_TIME_POSIX_TIME_STD_CONFIG")
@@ -341,6 +346,9 @@ set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DBRPC_ENABLE_CPU_PROFILER")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DBOOST_UUID_RANDOM_PROVIDER_FORCE_POSIX=1")
 if ("${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86" OR "${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86_64")
     set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -msse4.2")
+    if (USE_AVX2)
+        set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -mavx2")
+    endif()
 endif()
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS}  -Wno-attributes -DS2_USE_GFLAGS -DS2_USE_GLOG")
 
@@ -366,7 +374,7 @@ set(CXX_GCC_FLAGS "${CXX_GCC_FLAGS} -g -Wno-unused-local-typedefs")
 # Debug information is stored as dwarf2 to be as compatible as possible
 #   -Werror: compile warnings should be errors when using the toolchain compiler.
 # Only enable for debug builds because this is what we test in pre-commit tests.
-set(CXX_FLAGS_DEBUG "${CXX_GCC_FLAGS} -ggdb3 -O0 -gdwarf-2")
+set(CXX_FLAGS_DEBUG "${CXX_GCC_FLAGS} -ggdb -O0")
 
 # For CMAKE_BUILD_TYPE=Release
 #   -O3: Enable all compiler optimizations
@@ -430,6 +438,7 @@ include_directories(
     ${GPERFTOOLS_HOME}/include
     ${THIRDPARTY_DIR}/include/thrift/
     ${THIRDPARTY_DIR}/include/event/
+    ${THIRDPARTY_DIR}/include/breakpad/
 )
 
 set(WL_START_GROUP "-Wl,--start-group")
@@ -456,11 +465,17 @@ set(DORIS_LINK_LIBS
     Util
     DorisGen
     Webserver
-    TestUtil
     Geo
     Plugin
     ${WL_END_GROUP}
 )
+if (${MAKE_TEST} STREQUAL "ON")
+    set(DORIS_LINK_LIBS
+        ${DORIS_LINK_LIBS}
+        TestUtil
+    )
+endif()
+
 
 # COMMON_THIRDPARTY are thirdparty dependencies that can run on all platform
 # When adding new dependencies, If you don’t know if it can run on all platforms,
@@ -471,12 +486,7 @@ set(COMMON_THIRDPARTY
     librdkafka
     libs2
     snappy
-    Boost::regex
-    Boost::system
-    Boost::filesystem
-    Boost::thread
     Boost::date_time
-    Boost::program_options
     thrift
     thriftnb
     glog
@@ -485,6 +495,7 @@ set(COMMON_THIRDPARTY
     lz4
     libevent
     libevent_pthreads
+    gsasl
     curl
     ${LIBZ}
     ${LIBBZ2}
@@ -497,7 +508,6 @@ set(COMMON_THIRDPARTY
     bitshuffle
     roaring
     fmt
-    double-conversion
     jemalloc
     brotlicommon
     brotlidec
@@ -508,15 +518,22 @@ set(COMMON_THIRDPARTY
     orc
     odbc
     cctz
-    minzip
+    minizip
+    breakpad
     ${AWS_LIBS}
 )
+
+if (${MAKE_TEST} STREQUAL "ON")
+    set(COMMON_THIRDPARTY
+        ${COMMON_THIRDPARTY}
+        benchmark       
+    )
+endif()
 
 # thirdparties dependescies that can only run on X86 platform
 set(X86_DEPENDENCIES
     ${COMMON_THIRDPARTY}   
     hdfs3
-    gsasl
     xml2
     lzma
 )
@@ -608,6 +625,7 @@ if (${MAKE_TEST} STREQUAL "ON")
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage -DGTEST_USE_OWN_TR1_TUPLE=0")
     SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-arcs -ftest-coverage -lgcov")
     add_definitions(-DBE_TEST)
+    add_subdirectory(${SRC_DIR}/testutil)
 endif ()
 
 add_subdirectory(${SRC_DIR}/agent)
@@ -622,10 +640,12 @@ add_subdirectory(${SRC_DIR}/http)
 add_subdirectory(${SRC_DIR}/olap)
 add_subdirectory(${SRC_DIR}/runtime)
 add_subdirectory(${SRC_DIR}/service)
-add_subdirectory(${SRC_DIR}/testutil)
-#add_subdirectory(${SRC_DIR}/tools)
 add_subdirectory(${SRC_DIR}/udf)
-add_subdirectory(${SRC_DIR}/tools)
+
+if (${MAKE_TEST} STREQUAL "OFF")
+    add_subdirectory(${SRC_DIR}/tools)
+endif()
+
 add_subdirectory(${SRC_DIR}/util)
 add_subdirectory(${SRC_DIR}/plugin)
 
@@ -674,6 +694,7 @@ if (${MAKE_TEST} STREQUAL "ON")
     add_subdirectory(${TEST_DIR}/exec)
     add_subdirectory(${TEST_DIR}/exprs)
     add_subdirectory(${TEST_DIR}/geo)
+    add_subdirectory(${TEST_DIR}/gutil)
     add_subdirectory(${TEST_DIR}/http)
     add_subdirectory(${TEST_DIR}/olap)
     add_subdirectory(${TEST_DIR}/runtime)
@@ -681,6 +702,7 @@ if (${MAKE_TEST} STREQUAL "ON")
     add_subdirectory(${TEST_DIR}/util)
     add_subdirectory(${TEST_DIR}/plugin)
     add_subdirectory(${TEST_DIR}/plugin/example)
+    add_subdirectory(${TEST_DIR}/tools)
 endif ()
 
 # Install be

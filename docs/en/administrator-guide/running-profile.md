@@ -44,10 +44,10 @@ FE splits the query plan into fragments and distributes them to BE for task exec
 Turn on the report switch on FE through MySQL command
 
 ```
-mysql> set is_report_success=true; 
+mysql> set enable_profile=true; 
 ```
 
-After executing the corresponding SQL statement, we can see the report information of the corresponding SQL statement on the FE web page like the picture below.
+After executing the corresponding SQL statement(`is_report_success` in old versions), we can see the report information of the corresponding SQL statement on the FE web page like the picture below.
 ![image.png](/images/running_profile.png)
 
 The latest  **100 statements** executed will be listed here. We can view detailed statistics of RunningProfile.
@@ -110,6 +110,7 @@ There are many statistical information collected at BE.  so we list the correspo
 #### `DataStreamSender`
  - BytesSent: Total bytes data sent
  - IgnoreRows: Rows filtered
+ - LocalBytesSent: The amount bytes of local node send to it's self during Exchange
  - OverallThroughput: Total throughput = BytesSent / Time
  - SerializeBatchTime: Sending data serialization time
  - UncompressedRowBatchSize: Size of rowbatch before sending data compression
@@ -211,7 +212,7 @@ OLAP_SCAN_NODE (id=0):(Active: 1.2ms,% non-child: 0.00%)
     - ReaderInitTime: 5.475ms           # The time when OlapScanner initializes Reader. V1 includes the time to form MergeHeap. V2 includes the time to generate various Iterators and read the first group of blocks.
     - RowsDelFiltered: 0                # Including the number of rows filtered out according to the Delete information in the Tablet, and the number of rows filtered for marked deleted rows under the unique key model.
     - RowsPushedCondFiltered: 0         # Filter conditions based on the predicates passed down, such as the conditions passed from BuildTable to ProbeTable in Join calculation. This value is not accurate, because if the filtering effect is poor, it will no longer be filtered.
-    - ScanTime: 39.24us                 # The number of rows returned from ScanNode to the upper node.
+    - ScanTime: 39.24us                 # The time returned from ScanNode to the upper node.
     - ShowHintsTime_V1: 0ns             # V2 has no meaning. Read part of the data in V1 to perform ScanRange segmentation.
     SegmentIterator:
       - BitmapIndexFilterTimer: 779ns   # Use bitmap index to filter data time-consuming.

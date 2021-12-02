@@ -19,7 +19,9 @@ package org.apache.doris.qe;
 
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.common.Config;
+import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ThreadPoolManager;
+import org.apache.doris.ldap.LdapAuthenticate;
 import org.apache.doris.mysql.MysqlProto;
 import org.apache.doris.mysql.nio.NConnectContext;
 import org.apache.doris.mysql.privilege.PrivPredicate;
@@ -103,7 +105,11 @@ public class ConnectScheduler {
             connByUser.put(ctx.getQualifiedUser(), new AtomicInteger(0));
         }
         int conns = connByUser.get(ctx.getQualifiedUser()).get();
-        if (conns >= ctx.getCatalog().getAuth().getMaxConn(ctx.getQualifiedUser())) {
+        if (ctx.getIsTempUser()) {
+            if (conns >= LdapAuthenticate.getMaxConn()) {
+                return false;
+            }
+        } else if (conns >= ctx.getCatalog().getAuth().getMaxConn(ctx.getQualifiedUser())) {
             return false;
         }
         numberConnection++;
@@ -113,6 +119,7 @@ public class ConnectScheduler {
     }
 
     public synchronized void unregisterConnection(ConnectContext ctx) {
+        ctx.closeTxn();
         if (connectionMap.remove((long) ctx.getConnectionId()) != null) {
             numberConnection--;
             AtomicInteger conns = connByUser.get(ctx.getQualifiedUser());
@@ -167,7 +174,7 @@ public class ConnectScheduler {
                 if (registerConnection(context)) {
                     MysqlProto.sendResponsePacket(context);
                 } else {
-                    context.getState().setError("Reach limit of connections");
+                    context.getState().setError(ErrorCode.ERR_USER_LIMIT_REACHED, "Reach limit of connections");
                     MysqlProto.sendResponsePacket(context);
                     return;
                 }

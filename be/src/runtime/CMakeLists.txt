@@ -40,6 +40,7 @@ set(RUNTIME_FILES
     raw_value.cpp
     raw_value_ir.cpp
     result_sink.cpp
+    result_file_sink.cpp
     result_buffer_mgr.cpp
     result_writer.cpp
     row_batch.cpp
@@ -48,9 +49,9 @@ set(RUNTIME_FILES
     string_value.cpp
     thread_resource_mgr.cpp
     #  timestamp_value.cpp
-    decimal_value.cpp
     decimalv2_value.cpp
     large_int_value.cpp
+    collection_value.cpp
     tuple.cpp
     tuple_row.cpp
     vectorized_row_batch.cpp
@@ -107,9 +108,11 @@ set(RUNTIME_FILES
     mysql_result_writer.cpp
     memory/system_allocator.cpp
     memory/chunk_allocator.cpp
+    fold_constant_mgr.cpp
     cache/result_node.cpp
     cache/result_cache.cpp
     odbc_table_sink.cpp	
+    minidump.cpp
 )
 
 if (WITH_MYSQL)

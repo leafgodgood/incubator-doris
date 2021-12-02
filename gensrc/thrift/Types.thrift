@@ -66,7 +66,7 @@ enum TPrimitiveType {
   DATE,
   DATETIME,
   BINARY,
-  DECIMAL,
+  DECIMAL_DEPRACTED, // not used now, only for place holder
   // CHAR(n). Currently only supported in UDAs
   CHAR,
   LARGEINT,
@@ -74,7 +74,12 @@ enum TPrimitiveType {
   HLL,
   DECIMALV2,
   TIME,
-  OBJECT
+  OBJECT,
+  ARRAY,
+  MAP,
+  STRUCT,
+  STRING,
+  ALL
 }
 
 enum TTypeNodeType {
@@ -322,6 +327,7 @@ struct TFunction {
 
   11: optional i64 id
   12: optional string checksum
+  13: optional bool vectorized = false
 }
 
 enum TLoadJobState {
@@ -416,6 +422,11 @@ enum TMergeType {
   APPEND,
   MERGE,
   DELETE
+}
+
+enum TSortType {
+    LEXICAL,
+    ZORDER, 
 }
 
 // represent a user identity

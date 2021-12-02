@@ -137,6 +137,18 @@ FE 的配置项有两种方式进行配置：
 
 用于设置 GRPC 客户端通道的初始流窗口大小，也用于设置最大消息大小。当结果集较大时，可能需要增大该值。
 
+### min_replication_num_per_tablet
+
+默认值：1
+
+用于设置单个tablet的最小replication数量。
+
+### max_replication_num_per_tablet
+
+默认值：32767
+
+用于设置单个tablet的最大replication数量。
+
 ### enable_outfile_to_local
 
 默认值：false
@@ -180,13 +192,29 @@ FE 的配置项有两种方式进行配置：
 
 HTTP Server V2 由 SpringBoot 实现。它采用前后端分离的架构。只有启用 httpv2 才能用户使用新的前端 UI 界面
 
-### http_max_file_size
+### jetty_server_acceptors
 
-### http_max_request_size
+默认值：2
 
-默认值：100MB
+### jetty_server_selectors
 
-以上两个参数是http v2版本，web最大上传文件限制，默认100MB，可以根据自己需要修改
+默认值：4
+
+### jetty_server_workers
+
+默认值：0
+
+以上三个参数，Jetty的线程架构模型非常简单，分为 acceptors，selectors 和 workers 三个线程池。acceptors 负责接受新连接，然后交给selectors处理HTTP消息协议的解包，最后由workers处理请求。前两个线程池采用非阻塞模型，一个线程可以处理很多socket的读写，所以线程池数量较小。
+
+大多数项目，acceptors 线程只需要1-2个，selectors 线程配置2～4个足矣。workers 是阻塞性的业务逻辑，往往有较多的数据库操作，需要的线程数量较多，具体数量随应用程序的 QPS 和 IO 事件占比而定。QPS 越高，需要的线程数量越多，IO 占比越高，等待的线程数越多，需要的总线程数也越多。
+
+workers 线程池默认不做设置，根据自己需要进行设置
+
+### jetty_server_max_http_post_size
+
+默认值：100 * 1024 * 1024  （100MB）
+
+这个是put或post方法上传文件的最大字节数，默认值：100MB
 
 ### default_max_filter_ratio
 
@@ -200,7 +228,7 @@ HTTP Server V2 由 SpringBoot 实现。它采用前后端分离的架构。只�
 
 ### default_db_data_quota_bytes
 
-默认值：1TB
+默认值：1PB
 
 是否可以动态配置：true
 
@@ -211,6 +239,23 @@ HTTP Server V2 由 SpringBoot 实现。它采用前后端分离的架构。只�
 ```
 设置数据库数据量配额，单位为B/K/KB/M/MB/G/GB/T/TB/P/PB
 ALTER DATABASE db_name SET DATA QUOTA quota;
+查看配置
+show data （其他用法：HELP SHOW DATA）
+```
+
+### default_db_replica_quota_size
+
+默认值：1073741824
+
+是否可以动态配置：true
+
+是否为 Master FE 节点独有的配置项：true
+
+用于设置默认数据库Replica数量配额大小，设置单个数据库配额大小可以使用：
+
+```
+设置数据库Replica数量配额
+ALTER DATABASE db_name SET REPLICA QUOTA quota;
 查看配置
 show data （其他用法：HELP SHOW DATA）
 ```
@@ -336,7 +381,7 @@ show data （其他用法：HELP SHOW DATA）
 
 是否临时启用 spark load，默认不启用
 
-### enable_strict_storage_medium_check
+### disable_storage_medium_check
 
 默认值：false
 
@@ -344,9 +389,7 @@ show data （其他用法：HELP SHOW DATA）
 
 是否为 Master FE 节点独有的配置项：true
 
-如果设置为 true，FE 将在创建表时通过存储介质检查后端可用容量
-
-参数 `enable_strict_storage_medium_check` 为 `False` 该参数只是一个“尽力而为”的设置。即使集群内没有设置 SSD 存储介质，也不会报错，而是自动存储在可用的数据目录中。 同样，如果 SSD 介质不可访问、空间不足，都可能导致数据初始直接存储在其他可用介质上。而数据到期迁移到 HDD 时，如果 HDD 介质不可访问、空间不足，也可能迁移失败（但是会不断尝试）。 如果FE参数 `enable_strict_storage_medium_check` 为 `True` 则当集群内没有设置 SSD 存储介质时，会报错 `Failed to find enough host in all backends with storage medium is SSD`
+如果 disable_storage_medium_check 为true， ReportHandler 将不会检查 tablet 的存储介质， 并使得存储冷却功能失效，默认值为false。当您不关心 tablet 的存储介质是什么时，可以将值设置为true 。
 
 ### drop_backend_after_decommission
 
@@ -732,7 +775,7 @@ fe 会在每隔 es_state_sync_interval_secs 调用 es api 获取 es 索引分片
 
 ### max_query_retry_time
 
-默认值：2
+默认值：1
 
 是否可以动态配置：true
 
@@ -761,7 +804,15 @@ fe 会在每隔 es_state_sync_interval_secs 调用 es api 获取 es 索引分片
 
 3. 高并发查询均匀发送到所有 Frontends
 
-在这种情况下，所有 Frontends 只能使用本地副本进行查询。
+在这种情况下，所有 Frontends 只能使用本地副本进行查询。如果想当本地副本不可用时，使用非本地副本服务查询，请将 enable_local_replica_selection_fallback 设置为 true
+
+### enable_local_replica_selection_fallback
+
+默认值：false
+
+是否可以动态配置：true
+
+与 enable_local_replica_selection 配合使用，当本地副本不可用时，使用非本地副本服务查询。
 
 ### max_unfinished_load_job
 
@@ -1049,6 +1100,18 @@ colocote join PlanFragment instance 的 memory_limit = exec_mem_limit / min (que
 
 导出检查器的运行间隔
 
+### default_load_parallelism
+
+默认值：1
+
+是否可以动态配置：true
+
+是否为 Master FE 节点独有的配置项：true
+
+单个节点broker load导入的默认并发度。
+如果用户在提交broker load任务时，在properties中自行指定了并发度，则采用用户自定义的并发度。
+此参数将与`max_broker_concurrency`、`min_bytes_per_broker_scanner`等多个配置共同决定导入任务的并发度。
+
 ### max_broker_concurrency
 
 默认值：10
@@ -1067,7 +1130,7 @@ broker scanner 的最大并发数。
 
 是否为 Master FE 节点独有的配置项：true
 
-单个 broker scanner 将读取的最大字节数。
+单个 broker scanner 将读取的最小字节数。
 
 ### catalog_trash_expire_second
 
@@ -1998,8 +2061,44 @@ HOUR: log前缀是：yyyyMMddHH
 
 load 标签清理器将每隔 `label_clean_interval_second` 运行一次以清理过时的作业。
 
+### delete_info_keep_max_second
+
+默认值：3 * 24 * 3600  (3天)
+
+是否可以动态配置：true
+
+是否为 Master FE 节点独有的配置项：false
+
+删除元数据中创建时间大于`delete_info_keep_max_second`的delete信息。
+
+设置较短的时间将减少 FE 内存使用量和镜像文件大小。（因为所有的deleteInfo在被删除之前都存储在内存和镜像文件中）
+
 ### transaction_clean_interval_second
 
 默认值：30
 
 如果事务 visible 或者 aborted 状态，事务将在 `transaction_clean_interval_second` 秒后被清除 ，我们应该让这个间隔尽可能短，每个清洁周期都尽快
+
+
+### default_max_query_instances
+
+默认值：-1
+
+用户属性max_query_instances小于等于0时，使用该配置，用来限制单个用户同一时刻可使用的查询instance个数。该参数小于等于0表示无限制。
+
+### use_compact_thrift_rpc
+
+默认值：true
+
+是否使用压缩格式发送查询计划结构体。开启后，可以降低约50%的查询计划结构体大小，从而避免一些 "send fragment timeout" 错误。
+但是在某些高并发小查询场景下，可能会降低约10%的并发度。
+
+### disable_tablet_scheduler
+
+默认值：false
+
+是否可以动态配置：true
+
+是否为 Master FE 节点独有的配置项：false
+
+如果设置为true，将关闭副本修复和均衡逻辑。

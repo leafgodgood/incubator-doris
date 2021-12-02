@@ -22,6 +22,7 @@
 
 #include "gen_cpp/olap_file.pb.h"
 #include "olap/olap_define.h"
+#include "olap/tablet_schema.h"
 #include "olap/types.h"
 
 namespace doris {
@@ -129,6 +130,8 @@ public:
     inline size_t num_short_key_columns() const { return _num_short_key_columns; }
     inline size_t num_rows_per_row_block() const { return _num_rows_per_row_block; }
     inline KeysType keys_type() const { return _keys_type; }
+    inline SortType sort_type() const { return _sort_type; }
+    inline size_t sort_col_num() const { return _sort_col_num; }
     inline CompressKind compress_kind() const { return _compress_kind; }
     inline size_t next_column_unique_id() const { return _next_column_unique_id; }
     inline double bloom_filter_fpp() const { return _bf_fpp; }
@@ -148,6 +151,8 @@ private:
 
 private:
     KeysType _keys_type = DUP_KEYS;
+    SortType _sort_type = SortType::LEXICAL;
+    size_t _sort_col_num = 0;
     std::vector<TabletColumn> _cols;
     std::unordered_map<std::string, int32_t> _field_name_to_index;
     size_t _num_columns = 0;

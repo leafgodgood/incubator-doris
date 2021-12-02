@@ -20,68 +20,12 @@
 #include <sstream>
 
 #include "exprs/anyval_util.h"
+#include "exprs/expr_context.h"
 #include "runtime/raw_value.h"
 #include "runtime/runtime_state.h"
 #include "runtime/string_value.hpp"
 
 namespace doris {
-
-BloomFilterFuncBase* BloomFilterFuncBase::create_bloom_filter(MemTracker* tracker,
-                                                              PrimitiveType type) {
-    switch (type) {
-    case TYPE_BOOLEAN:
-        return new (std::nothrow) BloomFilterFunc<bool>(tracker);
-
-    case TYPE_TINYINT:
-        return new (std::nothrow) BloomFilterFunc<int8_t>(tracker);
-
-    case TYPE_SMALLINT:
-        return new (std::nothrow) BloomFilterFunc<int16_t>(tracker);
-
-    case TYPE_INT:
-        return new (std::nothrow) BloomFilterFunc<int32_t>(tracker);
-
-    case TYPE_BIGINT:
-        return new (std::nothrow) BloomFilterFunc<int64_t>(tracker);
-
-    case TYPE_FLOAT:
-        return new (std::nothrow) BloomFilterFunc<float>(tracker);
-
-    case TYPE_DOUBLE:
-        return new (std::nothrow) BloomFilterFunc<double>(tracker);
-
-    case TYPE_DATE:
-        return new (std::nothrow) DateBloomFilterFunc(tracker);
-
-    case TYPE_DATETIME:
-        return new (std::nothrow) DateTimeBloomFilterFunc(tracker);
-
-    case TYPE_DECIMAL:
-        return new (std::nothrow) DecimalFilterFunc(tracker);
-
-    case TYPE_DECIMALV2:
-        return new (std::nothrow) DecimalV2FilterFunc(tracker);
-
-    case TYPE_LARGEINT:
-        return new (std::nothrow) BloomFilterFunc<__int128>(tracker);
-
-    case TYPE_CHAR:
-        return new (std::nothrow) FixedCharBloomFilterFunc(tracker);
-    case TYPE_VARCHAR:
-        return new (std::nothrow) BloomFilterFunc<StringValue>(tracker);
-
-    default:
-        return nullptr;
-    }
-
-    return nullptr;
-}
-
-Status BloomFilterFuncBase::get_data(char** data, int* len) {
-    *data = _bloom_filter->data();
-    *len = _bloom_filter->size();
-    return Status::OK();
-}
 
 BloomFilterPredicate::BloomFilterPredicate(const TExprNode& node)
         : Predicate(node),
@@ -91,8 +35,8 @@ BloomFilterPredicate::BloomFilterPredicate(const TExprNode& node)
           _scan_rows(0) {}
 
 BloomFilterPredicate::~BloomFilterPredicate() {
-    LOG(INFO) << "bloom filter rows:" << _filtered_rows << ",scan_rows:" << _scan_rows
-              << ",rate:" << (double)_filtered_rows / _scan_rows;
+    VLOG_NOTICE << "bloom filter rows:" << _filtered_rows << ",scan_rows:" << _scan_rows
+                << ",rate:" << (double)_filtered_rows / _scan_rows;
 }
 
 BloomFilterPredicate::BloomFilterPredicate(const BloomFilterPredicate& other)
@@ -102,13 +46,13 @@ BloomFilterPredicate::BloomFilterPredicate(const BloomFilterPredicate& other)
           _filtered_rows(),
           _scan_rows() {}
 
-Status BloomFilterPredicate::prepare(RuntimeState* state, BloomFilterFuncBase* filter) {
+Status BloomFilterPredicate::prepare(RuntimeState* state, IBloomFilterFuncBase* filter) {
     // DCHECK(filter != nullptr);
     if (_is_prepare) {
         return Status::OK();
     }
     _filter.reset(filter);
-    if (NULL == _filter.get()) {
+    if (nullptr == _filter.get()) {
         return Status::InternalError("Unknown column type.");
     }
     _is_prepare = true;
@@ -126,7 +70,7 @@ BooleanVal BloomFilterPredicate::get_boolean_val(ExprContext* ctx, TupleRow* row
         return BooleanVal(true);
     }
     const void* lhs_slot = ctx->get_value(_children[0], row);
-    if (lhs_slot == NULL) {
+    if (lhs_slot == nullptr) {
         return BooleanVal::null();
     }
     _scan_rows++;

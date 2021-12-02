@@ -50,7 +50,8 @@ enum TPlanNodeType {
   ASSERT_NUM_ROWS_NODE,
   INTERSECT_NODE,
   EXCEPT_NODE,
-  ODBC_SCAN_NODE
+  ODBC_SCAN_NODE,
+  TABLE_FUNCTION_NODE,
 }
 
 // phases of an execution node
@@ -106,6 +107,7 @@ enum TFileFormatType {
     FORMAT_CSV_DEFLATE,
     FORMAT_ORC,
     FORMAT_JSON,
+    FORMAT_PROTO,
 }
 
 struct THdfsConf {
@@ -114,13 +116,12 @@ struct THdfsConf {
 }
 
 struct THdfsParams {
-    1: optional string host
-    2: optional i32 port
-    3: optional string user
-    4: optional string kerb_principal
-    5: optional string kerb_ticket_cache_path
-    6: optional string token
-    7: optional list<THdfsConf> hdfs_conf
+    1: optional string fs_name
+    2: optional string user
+    3: optional string kerb_principal
+    4: optional string kerb_ticket_cache_path
+    5: optional string token
+    6: optional list<THdfsConf> hdfs_conf
 }
 
 // One broker range information.
@@ -151,6 +152,8 @@ struct TBrokerRangeDesc {
     15: optional bool fuzzy_parse;
     16: optional THdfsParams hdfs_params
     17: optional bool read_json_by_line;
+    // Whether read line by column defination, only for Hive
+    18: optional bool read_by_column_def;
 }
 
 struct TBrokerScanRangeParams {
@@ -342,6 +345,7 @@ struct TOlapScanNode {
   4: required bool is_preaggregation
   5: optional string sort_column
   6: optional Types.TKeysType keyType
+  7: optional string table_name
 }
 
 struct TEqJoinCondition {
@@ -382,11 +386,10 @@ struct THashJoinNode {
   // anything from the ON or USING clauses (but *not* the WHERE clause) that's not an
   // equi-join predicate
   3: optional list<Exprs.TExpr> other_join_conjuncts
-  4: optional bool is_push_down
 
   // If true, this join node can (but may choose not to) generate slot filters
   // after constructing the build side that can be applied to the probe side.
-  5: optional bool add_probe_filters
+  4: optional bool add_probe_filters
 }
 
 struct TMergeJoinNode {
@@ -653,6 +656,11 @@ struct TOlapRewriteNode {
     3: required Types.TTupleId output_tuple_id
 }
 
+struct TTableFunctionNode {
+    1: optional list<Exprs.TExpr> fnCallExprList
+    2: optional list<Types.TSlotId> outputSlotIds
+}
+
 // This contains all of the information computed by the plan as part of the resource
 // profile that is needed by the backend to execute.
 struct TBackendResourceProfile {
@@ -669,7 +677,8 @@ struct TBackendResourceProfile {
 
 // The buffer size in bytes that is large enough to fit the largest row to be processed.
 // Set if the node allocates buffers for rows from the buffer pool.
-4: optional i64 max_row_buffer_size = 4194304  //TODO chenhao
+// Deprecated after support string type
+4: optional i64 max_row_buffer_size = 4294967296  // 4G
 }
 
 enum TAssertion {
@@ -727,7 +736,6 @@ struct TRuntimeFilterDesc {
   9: optional i64 bloom_filter_size_bytes
 }
 
-
 // This is essentially a union of all messages corresponding to subclasses
 // of PlanNode.
 struct TPlanNode {
@@ -771,6 +779,10 @@ struct TPlanNode {
   35: optional TOdbcScanNode odbc_scan_node
   // Runtime filters assigned to this plan node, exist in HashJoinNode and ScanNode
   36: optional list<TRuntimeFilterDesc> runtime_filters
+
+  40: optional Exprs.TExpr vconjunct
+
+  41: optional TTableFunctionNode table_function_node
 }
 
 // A flattened representation of a tree of PlanNodes, obtained by depth-first

@@ -28,13 +28,27 @@
 #include <string_view>
 
 #include "common/logging.h"
-#include "runtime/decimal_value.h"
 #include "udf/udf.h"
 #include "util/hash_util.hpp"
+#include "util/mysql_global.h"
 
 namespace doris {
 
 typedef __int128_t int128_t;
+
+enum DecimalError {
+    E_DEC_OK = 0,
+    E_DEC_TRUNCATED = 1,
+    E_DEC_OVERFLOW = 2,
+    E_DEC_DIV_ZERO = 4,
+    E_DEC_BAD_NUM = 8,
+    E_DEC_OOM = 16,
+
+    E_DEC_ERROR = 31,
+    E_DEC_FATAL_ERROR = 30
+};
+
+enum DecimalRoundMode { HALF_UP = 1, HALF_EVEN = 2, CEILING = 3, FLOOR = 4, TRUNCATE = 5 };
 
 class DecimalV2Value {
 public:
@@ -45,12 +59,14 @@ public:
     friend std::istream& operator>>(std::istream& ism, DecimalV2Value& decimal_value);
     friend DecimalV2Value operator-(const DecimalV2Value& v);
 
-    static const int32_t PRECISION = 27;
-    static const int32_t SCALE = 9;
-    static const uint32_t ONE_BILLION = 1000000000;
-    static const int64_t MAX_INT_VALUE = 999999999999999999;
-    static const int32_t MAX_FRAC_VALUE = 999999999;
-    static const int64_t MAX_INT64 = 9223372036854775807ll;
+    static constexpr int32_t PRECISION = 27;
+    static constexpr int32_t SCALE = 9;
+    static constexpr int32_t SCALE_TRIM_ARRAY[SCALE + 1] =
+            { 1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1 };
+    static constexpr uint32_t ONE_BILLION = 1000000000;
+    static constexpr int64_t MAX_INT_VALUE = 999999999999999999;
+    static constexpr int32_t MAX_FRAC_VALUE = 999999999;
+    static constexpr int64_t MAX_INT64 = 9223372036854775807ll;
     // In sqrt, the integer part and the decimal part of the square root to be solved separately are
     // multiplied by the PRECISION/2 power of 10, so that they can be placed in an int128_t variable
     static const int128_t SQRT_MOLECULAR_MAGNIFICATION;
@@ -180,6 +196,9 @@ public:
     // The maximum of fraction part is "scale".
     // If the length of fraction part is less than "scale", '0' will be filled.
     std::string to_string(int scale) const;
+
+    int32_t to_buffer(char* buffer, int scale) const;
+
     // Output actual "scale", remove ending zeroes.
     std::string to_string() const;
 

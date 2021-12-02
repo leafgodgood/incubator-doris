@@ -33,7 +33,7 @@
 #include "gen_cpp/PlanNodes_types.h"
 #include "olap/delete_handler.h"
 #include "olap/olap_cond.h"
-#include "olap/reader.h"
+#include "olap/tuple_reader.h"
 #include "olap/rowset/column_data.h"
 #include "olap/storage_engine.h"
 #include "runtime/descriptors.h"
@@ -43,21 +43,19 @@
 namespace doris {
 
 class OlapScanNode;
-class OLAPReader;
 class RuntimeProfile;
 class Field;
 
 class OlapScanner {
 public:
     OlapScanner(RuntimeState* runtime_state, OlapScanNode* parent, bool aggregation,
-                bool need_agg_finalize, const TPaloScanRange& scan_range,
-                const std::vector<OlapScanRange*>& key_ranges);
+                bool need_agg_finalize, const TPaloScanRange& scan_range);
 
     ~OlapScanner();
 
     Status prepare(const TPaloScanRange& scan_range, const std::vector<OlapScanRange*>& key_ranges,
                    const std::vector<TCondition>& filters,
-                   const std::vector<std::pair<std::string, std::shared_ptr<BloomFilterFuncBase>>>&
+                   const std::vector<std::pair<std::string, std::shared_ptr<IBloomFilterFuncBase>>>&
                            bloom_filters);
 
     Status open();
@@ -94,10 +92,14 @@ public:
 
     std::vector<bool>* mutable_runtime_filter_marks() { return &_runtime_filter_marks; }
 
-private:
+    const std::vector<SlotDescriptor*>& get_query_slots() const {
+        return _query_slots;
+    }
+
+protected:
     Status _init_params(const std::vector<OlapScanRange*>& key_ranges,
                         const std::vector<TCondition>& filters,
-                        const std::vector<std::pair<string, std::shared_ptr<BloomFilterFuncBase>>>&
+                        const std::vector<std::pair<string, std::shared_ptr<IBloomFilterFuncBase>>>&
                                 bloom_filters);
     Status _init_return_columns();
     void _convert_row_to_tuple(Tuple* tuple);
@@ -105,12 +107,13 @@ private:
     // Update profile that need to be reported in realtime.
     void _update_realtime_counter();
 
-private:
+protected:
     RuntimeState* _runtime_state;
     OlapScanNode* _parent;
     const TupleDescriptor* _tuple_desc; /**< tuple descriptor */
     RuntimeProfile* _profile;
     const std::vector<SlotDescriptor*>& _string_slots;
+    const std::vector<SlotDescriptor*>& _collection_slots;
 
     std::vector<ExprContext*> _conjunct_ctxs;
     // to record which runtime filters have been used

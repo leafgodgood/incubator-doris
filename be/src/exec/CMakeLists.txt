@@ -54,6 +54,7 @@ set(EXEC_FILES
     olap_common.cpp
     tablet_info.cpp
     tablet_sink.cpp
+    plain_binary_line_reader.cpp
     plain_text_line_reader.cpp
     csv_scan_node.cpp
     csv_scanner.cpp
@@ -87,6 +88,8 @@ set(EXEC_FILES
     schema_scanner/schema_table_privileges_scanner.cpp
     schema_scanner/schema_schema_privileges_scanner.cpp
     schema_scanner/schema_user_privileges_scanner.cpp
+    schema_scanner/schema_files_scanner.cpp
+    schema_scanner/schema_partitions_scanner.cpp
 
     partitioned_hash_table.cc
     partitioned_hash_table_ir.cc
@@ -104,12 +107,14 @@ set(EXEC_FILES
     assert_num_rows_node.cpp
     s3_reader.cpp
     s3_writer.cpp
+    hdfs_reader_writer.cpp
 )
 
 if (ARCH_AMD64)
     set(EXEC_FILES
         ${EXEC_FILES}
         hdfs_file_reader.cpp
+        hdfs_writer.cpp
         )
 endif()
 

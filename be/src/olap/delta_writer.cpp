@@ -24,6 +24,8 @@
 #include "olap/schema.h"
 #include "olap/schema_change.h"
 #include "olap/storage_engine.h"
+#include "runtime/row_batch.h"
+#include "runtime/tuple_row.h"
 
 namespace doris {
 
@@ -119,32 +121,6 @@ OLAPStatus DeltaWriter::init() {
         MutexLock push_lock(_tablet->get_push_lock());
         RETURN_NOT_OK(_storage_engine->txn_manager()->prepare_txn(_req.partition_id, _tablet,
                                                                   _req.txn_id, _req.load_id));
-        if (_req.need_gen_rollup) {
-            AlterTabletTaskSharedPtr alter_task = _tablet->alter_task();
-            if (alter_task != nullptr && alter_task->alter_state() != ALTER_FAILED) {
-                TTabletId new_tablet_id = alter_task->related_tablet_id();
-                TSchemaHash new_schema_hash = alter_task->related_schema_hash();
-                LOG(INFO) << "load with schema change. "
-                          << "old_tablet_id=" << _tablet->tablet_id() << ", "
-                          << ", old_schema_hash=" << _tablet->schema_hash() << ", "
-                          << ", new_tablet_id=" << new_tablet_id << ", "
-                          << ", new_schema_hash=" << new_schema_hash << ", "
-                          << ", transaction_id=" << _req.txn_id;
-                _new_tablet = tablet_mgr->get_tablet(new_tablet_id, new_schema_hash);
-                if (_new_tablet == nullptr) {
-                    LOG(WARNING) << "find alter task, but could not find new tablet. "
-                                 << "new_tablet_id=" << new_tablet_id
-                                 << ", new_schema_hash=" << new_schema_hash;
-                    return OLAP_ERR_TABLE_NOT_FOUND;
-                }
-                ReadLock new_migration_rlock(_new_tablet->get_migration_lock_ptr(), TRY_LOCK);
-                if (!new_migration_rlock.own_lock()) {
-                    return OLAP_ERR_RWLOCK_ERROR;
-                }
-                RETURN_NOT_OK(_storage_engine->txn_manager()->prepare_txn(
-                        _req.partition_id, _new_tablet, _req.txn_id, _req.load_id));
-            }
-        }
     }
 
     RowsetWriterContext writer_context;
@@ -179,7 +155,7 @@ OLAPStatus DeltaWriter::init() {
 }
 
 OLAPStatus DeltaWriter::write(Tuple* tuple) {
-    std::lock_guard<SpinLock> l(_lock); 
+    std::lock_guard<std::mutex> l(_lock);
     if (!_is_init && !_is_cancelled) {
         RETURN_NOT_OK(init());
     }
@@ -195,6 +171,9 @@ OLAPStatus DeltaWriter::write(Tuple* tuple) {
     // if memtable is full, push it to the flush executor,
     // and create a new memtable for incoming data
     if (_mem_table->memory_usage() >= config::write_buffer_size) {
+        if (++_segment_counter > config::max_segment_num_per_rowset) {
+            return OLAP_ERR_TOO_MANY_SEGMENTS;
+        }
         RETURN_NOT_OK(_flush_memtable_async());
         // create a new memtable for new incoming data
         _reset_mem_table();
@@ -202,12 +181,37 @@ OLAPStatus DeltaWriter::write(Tuple* tuple) {
     return OLAP_SUCCESS;
 }
 
+OLAPStatus DeltaWriter::write(const RowBatch* row_batch, const std::vector<int>& row_idxs) {
+    std::lock_guard<std::mutex> l(_lock);
+    if (!_is_init && !_is_cancelled) {
+        RETURN_NOT_OK(init());
+    }
+
+    if (_is_cancelled) {
+        return OLAP_ERR_ALREADY_CANCELLED;
+    }
+
+    for (const auto& row_idx : row_idxs) {
+        _mem_table->insert(row_batch->get_row(row_idx)->get_tuple(0));
+    }
+
+    if (_mem_table->memory_usage() >= config::write_buffer_size) {
+        RETURN_NOT_OK(_flush_memtable_async());
+        _reset_mem_table();
+    }
+
+    return OLAP_SUCCESS;
+}
+
 OLAPStatus DeltaWriter::_flush_memtable_async() {
+    if (++_segment_counter > config::max_segment_num_per_rowset) {
+        return OLAP_ERR_TOO_MANY_SEGMENTS;
+    }
     return _flush_token->submit(_mem_table);
 }
 
 OLAPStatus DeltaWriter::flush_memtable_and_wait(bool need_wait) {
-    std::lock_guard<SpinLock> l(_lock); 
+    std::lock_guard<std::mutex> l(_lock);
     if (!_is_init) {
         // This writer is not initialized before flushing. Do nothing
         // But we return OLAP_SUCCESS instead of OLAP_ERR_ALREADY_CANCELLED,
@@ -240,7 +244,7 @@ OLAPStatus DeltaWriter::flush_memtable_and_wait(bool need_wait) {
 }
 
 OLAPStatus DeltaWriter::wait_flush() {
-    std::lock_guard<SpinLock> l(_lock); 
+    std::lock_guard<std::mutex> l(_lock);
     if (!_is_init) {
         // return OLAP_SUCCESS instead of OLAP_ERR_ALREADY_CANCELLED for same reason
         // as described in flush_memtable_and_wait()
@@ -260,7 +264,7 @@ void DeltaWriter::_reset_mem_table() {
 }
 
 OLAPStatus DeltaWriter::close() {
-    std::lock_guard<SpinLock> l(_lock); 
+    std::lock_guard<std::mutex> l(_lock);
     if (!_is_init && !_is_cancelled) {
         // if this delta writer is not initialized, but close() is called.
         // which means this tablet has no data loaded, but at least one tablet
@@ -280,7 +284,7 @@ OLAPStatus DeltaWriter::close() {
 }
 
 OLAPStatus DeltaWriter::close_wait(google::protobuf::RepeatedPtrField<PTabletInfo>* tablet_vec) {
-    std::lock_guard<SpinLock> l(_lock); 
+    std::lock_guard<std::mutex> l(_lock);
     DCHECK(_is_init)
             << "delta writer is supposed be to initialized before close_wait() being called";
 
@@ -341,12 +345,14 @@ OLAPStatus DeltaWriter::close_wait(google::protobuf::RepeatedPtrField<PTabletInf
     _delta_written_success = true;
 
     const FlushStatistic& stat = _flush_token->get_stats();
-    VLOG_CRITICAL << "close delta writer for tablet: " << _tablet->tablet_id() << ", stats: " << stat;
+    VLOG_CRITICAL << "close delta writer for tablet: " << _tablet->tablet_id() 
+                  << ", load id: " << print_id(_req.load_id)
+                  << ", stats: " << stat;
     return OLAP_SUCCESS;
 }
 
 OLAPStatus DeltaWriter::cancel() {
-    std::lock_guard<SpinLock> l(_lock); 
+    std::lock_guard<std::mutex> l(_lock);
     if (!_is_init || _is_cancelled) {
         return OLAP_SUCCESS;
     }
@@ -361,6 +367,11 @@ OLAPStatus DeltaWriter::cancel() {
 }
 
 int64_t DeltaWriter::mem_consumption() const {
+    if (_mem_tracker == nullptr) {
+        // This method may be called before this writer is initialized.
+        // So _mem_tracker may be null.
+        return 0;
+    }
     return _mem_tracker->consumption();
 }
 

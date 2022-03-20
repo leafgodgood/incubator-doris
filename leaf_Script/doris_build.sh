@@ -300,8 +300,6 @@ ansible 172.$ip_subnet.0.3 -m shell -a "bash /opt/doris_$time/doris_2_$time/be/b
 ansible 172.$ip_subnet.0.4 -m shell -a "bash /opt/doris_$time/doris_3_$time/be/bin/start_be.sh --daemon"
 
 
-
-
 #################################卸载Doris###################################################
 
 function uninstall_doris()
